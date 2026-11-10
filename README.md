@@ -33,3 +33,7 @@ The application follows a classic layered architecture:
 Create a MySQL database:
 ```sql
 CREATE DATABASE loan_management_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+## 🧪 End-to-End Testing
+This application has been thoroughly tested for the complete loan lifecycle, Role-Based Access Control (RBAC), state machine transitions, and financial edge cases. 
+👉 **[View the complete UAT Testing Checklist here](TESTING.md)**
