@@ -16,6 +16,7 @@ $(document).ready(function() {
             
             // Hide Admin-only links
             if (user.roles[0] !== 'ADMIN') {
+                $('#link-users').hide();
                 $('#link-loan-types').hide();
                 $('#link-reports').hide();
                 $('#link-audit').hide();
@@ -39,6 +40,7 @@ function loadPage(page) {
     $('#view-loans').hide();
     $('#view-loan-details').hide();
     $('#view-loan-types').hide();
+    $('#view-users').hide();
     $('#view-reports').hide();
     $('#view-audit-logs').hide();
     
@@ -62,6 +64,10 @@ function loadPage(page) {
         $('#page-title').text('Loan Products');
         $('#view-loan-types').fadeIn();
         loadLoanTypes();
+    } else if (page === 'users') {
+        $('#page-title').text('User Management');
+        $('#view-users').fadeIn();
+        loadUsers();
     } else if (page === 'reports') {
         $('#page-title').text('Financial Reports');
         $('#view-reports').fadeIn();
