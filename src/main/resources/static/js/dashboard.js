@@ -4,14 +4,16 @@
 //     populates #user-name / #user-avatar, hides role-specific UI.
 //   - SPA router: global loadPage(page).
 //   - Role-specific dashboard stats: loadDashboardStats(role).
+//   - Admin Charts: renderAdminCharts(data).
 //   - Logout: POST /api/auth/logout → redirect.
-//
-// Loaded FIRST on index.html; every feature file depends on this being
-// initialized before they are used. Depends on api.js (jQuery setup + CSRF).
 
 'use strict';
 
 window.currentUserRole = null;
+
+// Chart instances (held globally so they can be destroyed and redrawn)
+let portfolioChartInstance = null;
+let statusChartInstance = null;
 
 /* ──────────────────────────────────────────────────────────────────────
  * Session bootstrap
@@ -23,7 +25,6 @@ $(function () {
             const user = (res && res.data) || null;
 
             if (!user) {
-                // Malformed but authenticated response — bail to login.
                 window.location.replace('/login.html');
                 return;
             }
@@ -50,17 +51,18 @@ $(function () {
                 $('#btnNewApp').hide();
             }
 
-            // Admin-only sidebar links
+            // Admin-only UI elements
             if (role !== 'ADMIN') {
                 $('#link-users').hide();
                 $('#link-loan-types').hide();
                 $('#link-reports').hide();
                 $('#link-audit').hide();
+                $('#adminChartsRow').hide(); // Hide charts for non-admins
+            } else {
+                $('#adminChartsRow').show(); // Show charts for admins
             }
         })
         .fail(function () {
-            // Unauthenticated → login. replace() so Back button doesn't
-            // bounce user back into a protected page.
             window.location.replace('/login.html');
         });
 
@@ -94,8 +96,6 @@ $(function () {
  * SPA router
  * ──────────────────────────────────────────────────────────────────── */
 
-// Pages that render a list of data. Missing a loader (e.g. script file
-// failed to load) results in a visible error rather than a blank page.
 function showLoadError(label) {
     var colspans = {
         customers: 7,
@@ -123,8 +123,6 @@ function showLoadError(label) {
     );
 }
 
-// Mark the corresponding sidebar link as active.
-// Handles both data-page="…" (future) and onclick="loadPage('…')" (current).
 function setActiveSidebarLink(page) {
     var $items = $('#sidebar-wrapper .list-group-item');
     $items.removeClass('active');
@@ -161,9 +159,6 @@ function loadPage(page) {
         if (window.currentUserRole) {
             loadDashboardStats(window.currentUserRole);
         } else {
-            // Very-rare race: page clicked before /api/auth/me resolved.
-            // Keep behaviour compatible with the original (default to ADMIN
-            // — the server still enforces auth, so no data is exposed).
             console.warn('[loadPage] currentUserRole not set yet; defaulting to ADMIN for stats.');
             loadDashboardStats('ADMIN');
         }
@@ -230,7 +225,7 @@ function loadPage(page) {
 }
 
 /* ──────────────────────────────────────────────────────────────────────
- * Dashboard stats (role-specific)
+ * Dashboard stats (role-specific) & Charts
  * ──────────────────────────────────────────────────────────────────── */
 
 function loadDashboardStats(role) {
@@ -258,6 +253,9 @@ function loadDashboardStats(role) {
                 $('#stat-outstanding').text(formatCurrency(data.totalOutstandingBalance));
                 $('#lbl-card-4').text('Total Collected');
                 $('#stat-collected').text(formatCurrency(data.totalRepaymentsCollected));
+
+                // Render Charts
+                renderAdminCharts(data);
 
             } else if (role === 'LOAN_OFFICER') {
                 $('#lbl-card-1').text('Total Applications');
@@ -291,4 +289,86 @@ function loadDashboardStats(role) {
                     }
                 });
         });
+}
+
+function renderAdminCharts(data) {
+    if (!document.getElementById('portfolioChart') || !document.getElementById('statusChart')) return;
+
+    // --- 1. Portfolio Chart (Bar) ---
+    if (portfolioChartInstance) {
+        portfolioChartInstance.destroy(); 
+    }
+    
+    const ctxPortfolio = document.getElementById('portfolioChart').getContext('2d');
+    portfolioChartInstance = new Chart(ctxPortfolio, {
+        type: 'bar',
+        data: {
+            labels: ['Disbursed', 'Interest Exp.', 'Outstanding', 'Collected'],
+            datasets: [{
+                label: 'Amount (LKR)',
+                data: [
+                    data.totalDisbursedPrincipal || 0,
+                    data.totalInterestExpected || 0,
+                    data.totalOutstandingBalance || 0,
+                    data.totalRepaymentsCollected || 0
+                ],
+                backgroundColor: [
+                    'rgba(37, 99, 235, 0.8)',
+                    'rgba(22, 163, 74, 0.8)',
+                    'rgba(220, 38, 38, 0.8)',
+                    'rgba(8, 145, 178, 0.8)'
+                ],
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { borderDash: [4, 4] },
+                    ticks: {
+                        callback: function(value) {
+                            return 'LKR ' + value.toLocaleString();
+                        }
+                    }
+                },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+
+    // --- 2. Status Chart (Doughnut) ---
+    if (statusChartInstance) {
+        statusChartInstance.destroy();
+    }
+
+    const ctxStatus = document.getElementById('statusChart').getContext('2d');
+    statusChartInstance = new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Active Loans', 'Completed Loans'],
+            datasets: [{
+                data: [
+                    data.activeLoans || 0, 
+                    data.completedLoans || 0 
+                ],
+                backgroundColor: ['#16A34A', '#64748B'],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, padding: 20 } }
+            }
+        }
+    });
 }

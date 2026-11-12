@@ -1,7 +1,7 @@
 // applications.js
 // Loan Application view: listing, workflow actions, EMI calculator, create modal.
 // Depends on: api.js (formatCurrency, jQuery setup), dashboard.js (loadPage),
-//             Bootstrap 5 modals (loaded via bundle in index.html).
+//             Bootstrap 5 modals, Select2 (searchable dropdown).
 
 'use strict';
 
@@ -28,7 +28,6 @@ function escapeAppHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-// Bootstrap 5 removed the jQuery .modal() bridge — use the JS API.
 function showBsModal(id) {
     var el = document.getElementById(id);
     if (!el) return;
@@ -36,7 +35,7 @@ function showBsModal(id) {
         window.bootstrap.Modal.getOrCreateInstance(el).show();
         return;
     }
-    if (window.jQuery && $.fn && $.fn.modal) { // legacy fallback
+    if (window.jQuery && $.fn && $.fn.modal) {
         $(el).modal('show');
     }
 }
@@ -381,19 +380,42 @@ function prepareNewApp() {
 
     $('#appEmiPreview').val('LKR 0.00');
 
-    // Customers
-    $.get('/api/customers', { size: 100, status: 'ACTIVE' })
-        .done(function (res) {
-            var options = '<option value="">Select a customer...</option>';
-            (res.data && res.data.content || []).forEach(function (c) {
-                options += '<option value="' + c.id + '">' +
-                    escapeAppHtml(c.customerCode) + ' - ' +
-                    escapeAppHtml(c.fullName) + ' (' +
-                    escapeAppHtml(c.nicNumber) + ')' +
-                '</option>';
-            });
-            $('#appCustomer').html(options);
-        });
+    // Initialize Select2 for searchable customers
+    $('#appCustomer').select2({
+        dropdownParent: $('#appModal'), // Required so search works inside a Bootstrap modal
+        placeholder: "Search by Name, NIC, or Code...",
+        allowClear: true,
+        width: '100%',
+        ajax: {
+            url: '/api/customers',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return {
+                    search: params.term, // Send the search term to the backend
+                    status: 'ACTIVE',
+                    size: 20 // Limit results
+                };
+            },
+            processResults: function (res) {
+                const data = (res.data && res.data.content) ? res.data.content : [];
+                return {
+                    results: data.map(function(c) {
+                        return {
+                            id: c.id,
+                            text: c.customerCode + ' - ' + c.fullName + ' (' + c.nicNumber + ')'
+                        };
+                    })
+                };
+            },
+            cache: true
+        },
+        minimumInputLength: 1 // Only search when the user types something
+    });
+
+    // Clear existing options before fetching new ones
+    $('#appCustomer').empty().append('<option value=""></option>');
+    $('#appCustomer').val(null).trigger('change');
 
     // Loan types
     $.get('/api/loan-types', { size: 100, status: 'ACTIVE' })
